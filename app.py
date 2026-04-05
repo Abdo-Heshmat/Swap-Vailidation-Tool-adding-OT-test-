@@ -96,4 +96,4 @@ for i, col in enumerate([col1, col2], 1):
                     shift_ends[f"e{i}_{week}"] = e_time
 
                 st.write("Days Off:")
-                d_col1, d_col2 = st.columns(2
+                d_col1, d_col2 = st.columns(2)
