@@ -62,6 +62,7 @@ with st.expander("📋 View Validation Rules & OT Logic", expanded=False):
         <b>✅ Rules Applied:</b><br>
         * Min 12h rest between shifts (Adjusted automatically if OT is added).<br>
         * Max 6 consecutive working days (Full Day OT adds to this count).<br>
+        * <b>OT Limit:</b> Maximum of 2 hours allowed before or after a shift.<br>
         * <b>Exemption:</b> 12h rule waived if Saturday (Day 7) or Sunday (Day 8) is a Day Off.
     </div>
     """, unsafe_allow_html=True)
@@ -95,39 +96,4 @@ for i, col in enumerate([col1, col2], 1):
                     shift_ends[f"e{i}_{week}"] = e_time
 
                 st.write("Days Off:")
-                d_col1, d_col2 = st.columns(2)
-                off1 = d_col1.selectbox(f"Off1 {i}{week}", ["First Day off"] + day_list, key=f"d{i}a_{week}", label_visibility="collapsed")
-                filtered_days = [d for d in day_list if d != off1] 
-                off2 = d_col2.selectbox(f"Off2 {i}{week}", ["Second Day off"] + filtered_days, key=f"d{i}b_{week}", label_visibility="collapsed")
-                
-                # --- NEW: Overtime Feature ---
-                with st.expander("➕ Add Overtime"):
-                    st.number_input("Extra Hours (After Shift)", 0, 5, 0, key=f"ot_after_{i}_{week}")
-                    st.checkbox("Full Day OT (9h Shift)", key=f"full_ot_{i}_{week}")
-
-                count = 0
-                if off1 != "First Day off": count += 1
-                if off2 != "Second Day off": count += 1
-                off_counts[f"e{i}_{week}"] = count
-                off_days[f"e{i}_{week}"] = [off1, off2]
-
-st.divider()
-
-if st.button("🚀 Run Swap Check", use_container_width=True):
-    validation_results = []
-    swap_config = {
-        1: {"cur_id": "e1_Current", "next_id": "e2_Next", "name_key": "user_name_1", "emp_idx": 1},
-        2: {"cur_id": "e2_Current", "next_id": "e1_Next", "name_key": "user_name_2", "emp_idx": 2}
-    }
-
-    for emp_num, config in swap_config.items():
-        reasons = []
-        name = st.session_state[config['name_key']] if st.session_state[config['name_key']] else f"Employee {emp_num}"
-        
-        # 1. Base Times
-        dt_end = get_dt(7, shift_ends[config['cur_id']], is_end_time=True, start_time_str=shift_starts[config['cur_id']])
-        dt_start = get_dt(8, shift_starts[config['next_id']])
-
-        # 2. APPLY OT HOURS (Squeezing the rest time)
-        ot_extra_cur = st.session_state.get(f"ot_after_{config['emp_idx']}_Current", 0)
-        dt
+                d_col1, d_col2 = st.columns(2
