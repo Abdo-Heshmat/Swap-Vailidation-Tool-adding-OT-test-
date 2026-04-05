@@ -8,7 +8,6 @@ def calculate_end_time(start_time_str, duration):
     return end_dt.strftime("%I %p")
 
 def get_dt(day_idx, time_str, is_end_time=False, start_time_str=None):
-    # Base date for calculation logic
     base_date = datetime(2026, 3, 22) 
     target_date = base_date + timedelta(days=day_idx-1)
     
@@ -67,14 +66,15 @@ with st.expander("📋 View Validation Rules & OT Logic", expanded=False):
     st.markdown("""
     <div class='rules-box'>
         <b>✅ Rules Applied:</b><br>
-        * Min 12h rest between shifts (Automatically adjusted for OT).<br>
-        * Max 6 consecutive working days (Full Day OT adds to this count).<br>
-        * <b>OT Limits:</b> Max 2 hours for Pre/Post shift extensions.<br>
-        * <b>Exemptions:</b> 12h rule waived if Saturday or Sunday is a Day Off.
+        * <b>Ramadan Mode:</b> Base shift is 7 hours instead of 9.<br>
+        * <b>Min 12h rest:</b> Calculated from the end of shift (+ OT) to the next start.<br>
+        * <b>Max 6 days:</b> Full Day OT counts as a working day.<br>
+        * <b>OT Limits:</b> Max 2 hours extension allowed.
     </div>
     """, unsafe_allow_html=True)
 
 is_ramadan = st.checkbox("🌙 Ramadan's shifts (7 hours)")
+# This 'duration' variable now controls everything below
 duration = 7 if is_ramadan else 9
 
 day_list = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
@@ -97,6 +97,7 @@ for i, col in enumerate([col1, col2], 1):
                     s_time = st.selectbox(f"Start {i}{week}", hours, index=17 if i==1 and week=="Current" else 9, key=f"s{i}_{week}", label_visibility="collapsed")
                 with t2: st.write("<br><center>to</center>", unsafe_allow_html=True)
                 with t3:
+                    # UPDATED: calculate_end_time now uses the 7h or 9h duration automatically
                     e_time = calculate_end_time(s_time, duration)
                     st.markdown(f"<div class='dark-match-box'><span>{e_time}</span></div>", unsafe_allow_html=True)
                     shift_starts[f"e{i}_{week}"] = s_time
@@ -108,12 +109,13 @@ for i, col in enumerate([col1, col2], 1):
                 filtered_days = [d for d in day_list if d != off1] 
                 off2 = d_col2.selectbox(f"Off2 {i}{week}", ["Second Day off"] + filtered_days, key=f"d{i}b_{week}", label_visibility="collapsed")
                 
-                # --- Overtime Feature (Max 2h) ---
                 with st.expander("➕ Add Overtime"):
                     oc1, oc2 = st.columns(2)
                     oc1.number_input("OT Before (hrs)", 0, 2, 0, key=f"ot_before_{i}_{week}")
                     oc2.number_input("OT After (hrs)", 0, 2, 0, key=f"ot_after_{i}_{week}")
-                    st.checkbox("Full Day OT (9h Shift)", key=f"full_ot_{i}_{week}")
+                    # UPDATED: Full Day OT in Ramadan is also 7 hours
+                    full_ot_label = "Full Day OT (7h)" if is_ramadan else "Full Day OT (9h)"
+                    st.checkbox(full_ot_label, key=f"full_ot_{i}_{week}")
 
                 count = 0
                 if off1 != "First Day off": count += 1
@@ -134,29 +136,27 @@ if st.button("🚀 Run Swap Check", use_container_width=True):
         reasons = []
         name = st.session_state[config['name_key']] if st.session_state[config['name_key']] else f"Employee {emp_num}"
         
-        # 1. Get base datetime objects for comparison
+        # End time of Week 1 vs Start time of Week 2
         dt_end = get_dt(7, shift_ends[config['cur_id']], is_end_time=True, start_time_str=shift_starts[config['cur_id']])
         dt_start = get_dt(8, shift_starts[config['next_id']])
 
-        # 2. APPLY OT Logic
-        # Shift End Time FORWARD (staying late)
+        # Apply OT Squeeze
         ot_after_hrs = min(st.session_state.get(f"ot_after_{config['emp_idx']}_Current", 0), 2)
         dt_end += timedelta(hours=ot_after_hrs)
         
-        # Shift Next Start Time BACKWARD (coming in early)
         ot_before_hrs = min(st.session_state.get(f"ot_before_{config['emp_idx']}_Next", 0), 2)
         dt_start -= timedelta(hours=ot_before_hrs)
 
-        # 3. Rest Validation (with Exemptions)
+        # Rest Check
         is_off_sat = "Saturday" in off_days[config['cur_id']]
         is_off_sun = "Sunday" in off_days[config['next_id']]
 
         if not (is_off_sat or is_off_sun):
             rest = (dt_start - dt_end).total_seconds() / 3600
             if rest < 12:
-                reasons.append(f"Insufficient Rest: Only **{rest:.1f}h** (Min 12h required due to OT).")
+                reasons.append(f"Insufficient Rest: Only **{rest:.1f}h** (Min 12h required).")
 
-        # 4. Working Days Validation (Applying Full Day OT)
+        # Working Days Check
         work_cur = (7 - off_counts[config['cur_id']]) + (1 if st.session_state.get(f"full_ot_{config['emp_idx']}_Current") else 0)
         work_next = (7 - off_counts[config['next_id']]) + (1 if st.session_state.get(f"full_ot_{config['emp_idx']}_Next") else 0)
 
