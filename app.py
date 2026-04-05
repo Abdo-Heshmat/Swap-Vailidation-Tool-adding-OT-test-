@@ -1,69 +1,14 @@
 import streamlit as st
 from datetime import datetime, timedelta
 
-# --- 1. THEME STATE & TOGGLE ---
+# --- 1. THEME MANAGEMENT ---
 if "theme" not in st.session_state:
     st.session_state.theme = "dark"
 
 def toggle_theme():
     st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
 
-# Define theme-dependent symbols
-theme_icon = "☀️" if st.session_state.theme == "dark" else "🌙"
-theme_label = "Switch to Light Mode" if st.session_state.theme == "dark" else "Switch to Dark Mode"
-
-# --- 2. NATIVE CSS (Zero Specific Colors) ---
-st.set_page_config(layout="wide", page_title="Swap Validator Pro")
-
-# This CSS uses variables that change automatically with the Streamlit theme
-st.markdown(f"""
-    <style>
-    /* Ensure all containers use the same native background */
-    .stHeader, .stApp {{
-        background-color: transparent !important;
-    }}
-    
-    /* Uniform styling for the 'End Time' display box */
-    .unified-box {{
-        background-color: var(--secondary-bg-color);
-        border: 1px solid var(--border-color);
-        color: var(--text-color);
-        padding: 10px;
-        border-radius: 8px;
-        text-align: center;
-        font-weight: bold;
-        height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }}
-
-    /* Center headers */
-    h1, h3 {{
-        text-align: center;
-        margin-bottom: 20px;
-    }}
-
-    /* Remove individual box styles to keep everything flat and uniform */
-    .stSelectbox, .stNumberInput, .stTextInput {{
-        background-color: transparent !important;
-    }}
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- 3. TOP BAR (Theme Toggle) ---
-col_title, col_theme = st.columns([9, 2])
-with col_theme:
-    st.button(f"{theme_icon} {theme_label}", on_click=toggle_theme, use_container_width=True)
-
-with col_title:
-    st.markdown("<h1>🔄 Smart Swap Validator</h1>", unsafe_allow_html=True)
-
-# --- 4. RAMADAN TOGGLE (Back to original position) ---
-is_ramadan = st.checkbox("🌙 Ramadan's shifts (7 hours)")
-duration = 7 if is_ramadan else 9
-
-# --- Helper Functions ---
+# --- 2. HELPER FUNCTIONS ---
 def calculate_end_time(start_time_str, dur):
     start_dt = datetime.strptime(start_time_str, "%I %p")
     end_dt = start_dt + timedelta(hours=dur)
@@ -79,7 +24,25 @@ def get_dt(day_idx, time_str, is_end_time=False, start_time_str=None):
     time_obj = datetime.strptime(time_str, "%I %p").time()
     return datetime.combine(target_date, time_obj)
 
-# --- 5. MAIN FORM ---
+# --- 3. PAGE CONFIG & THEME ICONS ---
+st.set_page_config(layout="wide", page_title="Swap Validator Pro")
+
+# Theme icon logic
+icon = "☀️" if st.session_state.theme == "dark" else "🌙"
+label = " Light Mode" if st.session_state.theme == "dark" else " Dark Mode"
+
+# --- 4. MAIN UI LAYOUT ---
+# Left side toggle button as requested
+col_toggle, col_spacer = st.columns([2, 10])
+with col_toggle:
+    st.button(f"{icon}{label}", on_click=toggle_theme, use_container_width=True)
+
+st.markdown("<h1 style='text-align: center;'>🔄 Smart Swap Validator</h1>", unsafe_allow_html=True)
+
+# Ramadan Toggle in original position
+is_ramadan = st.checkbox("🌙 Ramadan's shifts (7 hours)")
+duration = 7 if is_ramadan else 9
+
 day_list = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 hours = [datetime.strptime(str(i), "%H").strftime("%I %p") for i in range(24)]
 
@@ -89,20 +52,24 @@ shift_data = {}
 for i, col in enumerate([col1, col2], 1):
     with col:
         st.markdown(f"### 👤 Employee {i}")
-        st.text_input("Name", placeholder=f"Enter Employee {i} Name", key=f"name_{i}")
+        st.text_input("Name", placeholder=f"Employee {i} Name", key=f"name_{i}", label_visibility="collapsed")
         
         for week in ["Current", "Next"]:
             st.write(f"**{week} Week**")
-            # Uniform Card Layout
             with st.container(border=True):
                 t1, t2, t3 = st.columns([4, 1, 4])
+                
                 with t1:
-                    s_time = st.selectbox(f"Start {week}{i}", hours, index=17 if i==1 and week=="Current" else 9, key=f"s{i}_{week}", label_visibility="collapsed")
+                    s_time = st.selectbox(f"Start {week}{i}", hours, 
+                                          index=17 if i==1 and week=="Current" else 9, 
+                                          key=f"s{i}_{week}")
                 with t2:
-                    st.markdown("<p style='text-align:center; padding-top:10px;'>to</p>", unsafe_allow_html=True)
+                    st.markdown("<p style='text-align:center; padding-top:35px;'>to</p>", unsafe_allow_html=True)
+                
                 with t3:
+                    # UPDATED: Using st.text_input (disabled) so it matches the selectbox style exactly
                     e_time = calculate_end_time(s_time, duration)
-                    st.markdown(f"<div class='unified-box'>{e_time}</div>", unsafe_allow_html=True)
+                    st.text_input(f"End {week}{i}", value=e_time, disabled=True, key=f"disp_e{i}_{week}")
                 
                 o1, o2 = st.columns(2)
                 off1 = o1.selectbox(f"Off 1 {week}{i}", ["None"] + day_list, key=f"o1_{i}_{week}")
@@ -120,8 +87,8 @@ for i, col in enumerate([col1, col2], 1):
 
 st.divider()
 
+# --- 5. EXECUTION LOGIC ---
 if st.button("🚀 Run Swap Check", use_container_width=True):
-    # Logic implementation
     for emp_idx in [1, 2]:
         name = st.session_state[f"name_{emp_idx}"] or f"Employee {emp_idx}"
         cur_key = f"e{emp_idx}_Current"
@@ -130,14 +97,14 @@ if st.button("🚀 Run Swap Check", use_container_width=True):
         d_end = get_dt(7, shift_data[cur_key]["end"], is_end_time=True, start_time_str=shift_data[cur_key]["start"])
         d_start = get_dt(8, shift_data[next_key]["start"])
 
-        # Add OT adjustment
+        # OT adjustment
         d_end += timedelta(hours=st.session_state[f"ota_{emp_idx}_Current"])
         d_start -= timedelta(hours=st.session_state[f"otb_{3-emp_idx}_Next"])
 
         rest = (d_start - d_end).total_seconds() / 3600
         if rest < 12 and not ("Saturday" in shift_data[cur_key]["off_days"] or "Sunday" in shift_data[next_key]["off_days"]):
-            st.error(f"❌ {name}: Rest is only {rest:.1f}h.")
+            st.error(f"❌ {name}: Rest period is only {rest:.1f}h. Swap rejected.")
         else:
-            st.success(f"✅ {name}: Schedule looks good!")
+            st.success(f"✅ {name}: Schedule is valid.")
 
 st.markdown("<br><center>Created by Abdelrahman heshmat @abheshma</center>", unsafe_allow_html=True)
