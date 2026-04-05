@@ -8,6 +8,7 @@ def calculate_end_time(start_time_str, duration):
     return end_dt.strftime("%I %p")
 
 def get_dt(day_idx, time_str, is_end_time=False, start_time_str=None):
+    # Base date for calculation logic
     base_date = datetime(2026, 3, 22) 
     target_date = base_date + timedelta(days=day_idx-1)
     
@@ -26,7 +27,13 @@ st.set_page_config(layout="wide", page_title="Swap Validator Pro")
 st.markdown("""
     <style>
     .stApp { background-color: #0e1117; color: #ffffff; max-width: 1100px; margin: 0 auto; }
-    input[type="text"], .stNumberInput input { text-align: center !important; background-color: #1e2129 !important; color: white !important; border: 1px solid #3e4451 !important; border-radius: 8px !important; }
+    input[type="text"], .stNumberInput input { 
+        text-align: center !important; 
+        background-color: #1e2129 !important; 
+        color: white !important; 
+        border: 1px solid #3e4451 !important; 
+        border-radius: 8px !important; 
+    }
     
     .dark-match-box { 
         background-color: #1e2129; 
@@ -60,10 +67,10 @@ with st.expander("📋 View Validation Rules & OT Logic", expanded=False):
     st.markdown("""
     <div class='rules-box'>
         <b>✅ Rules Applied:</b><br>
-        * Min 12h rest between shifts (Adjusted automatically if OT is added).<br>
+        * Min 12h rest between shifts (Automatically adjusted for OT).<br>
         * Max 6 consecutive working days (Full Day OT adds to this count).<br>
-        * <b>OT Limit:</b> Maximum of 2 hours allowed before or after a shift.<br>
-        * <b>Exemption:</b> 12h rule waived if Saturday (Day 7) or Sunday (Day 8) is a Day Off.
+        * <b>OT Limits:</b> Max 2 hours for Pre/Post shift extensions.<br>
+        * <b>Exemptions:</b> 12h rule waived if Saturday or Sunday is a Day Off.
     </div>
     """, unsafe_allow_html=True)
 
@@ -97,3 +104,80 @@ for i, col in enumerate([col1, col2], 1):
 
                 st.write("Days Off:")
                 d_col1, d_col2 = st.columns(2)
+                off1 = d_col1.selectbox(f"Off1 {i}{week}", ["First Day off"] + day_list, key=f"d{i}a_{week}", label_visibility="collapsed")
+                filtered_days = [d for d in day_list if d != off1] 
+                off2 = d_col2.selectbox(f"Off2 {i}{week}", ["Second Day off"] + filtered_days, key=f"d{i}b_{week}", label_visibility="collapsed")
+                
+                # --- Overtime Feature (Max 2h) ---
+                with st.expander("➕ Add Overtime"):
+                    oc1, oc2 = st.columns(2)
+                    oc1.number_input("OT Before (hrs)", 0, 2, 0, key=f"ot_before_{i}_{week}")
+                    oc2.number_input("OT After (hrs)", 0, 2, 0, key=f"ot_after_{i}_{week}")
+                    st.checkbox("Full Day OT (9h Shift)", key=f"full_ot_{i}_{week}")
+
+                count = 0
+                if off1 != "First Day off": count += 1
+                if off2 != "Second Day off": count += 1
+                off_counts[f"e{i}_{week}"] = count
+                off_days[f"e{i}_{week}"] = [off1, off2]
+
+st.divider()
+
+if st.button("🚀 Run Swap Check", use_container_width=True):
+    validation_results = []
+    swap_config = {
+        1: {"cur_id": "e1_Current", "next_id": "e2_Next", "name_key": "user_name_1", "emp_idx": 1},
+        2: {"cur_id": "e2_Current", "next_id": "e1_Next", "name_key": "user_name_2", "emp_idx": 2}
+    }
+
+    for emp_num, config in swap_config.items():
+        reasons = []
+        name = st.session_state[config['name_key']] if st.session_state[config['name_key']] else f"Employee {emp_num}"
+        
+        # 1. Get base datetime objects for comparison
+        dt_end = get_dt(7, shift_ends[config['cur_id']], is_end_time=True, start_time_str=shift_starts[config['cur_id']])
+        dt_start = get_dt(8, shift_starts[config['next_id']])
+
+        # 2. APPLY OT Logic
+        # Shift End Time FORWARD (staying late)
+        ot_after_hrs = min(st.session_state.get(f"ot_after_{config['emp_idx']}_Current", 0), 2)
+        dt_end += timedelta(hours=ot_after_hrs)
+        
+        # Shift Next Start Time BACKWARD (coming in early)
+        ot_before_hrs = min(st.session_state.get(f"ot_before_{config['emp_idx']}_Next", 0), 2)
+        dt_start -= timedelta(hours=ot_before_hrs)
+
+        # 3. Rest Validation (with Exemptions)
+        is_off_sat = "Saturday" in off_days[config['cur_id']]
+        is_off_sun = "Sunday" in off_days[config['next_id']]
+
+        if not (is_off_sat or is_off_sun):
+            rest = (dt_start - dt_end).total_seconds() / 3600
+            if rest < 12:
+                reasons.append(f"Insufficient Rest: Only **{rest:.1f}h** (Min 12h required due to OT).")
+
+        # 4. Working Days Validation (Applying Full Day OT)
+        work_cur = (7 - off_counts[config['cur_id']]) + (1 if st.session_state.get(f"full_ot_{config['emp_idx']}_Current") else 0)
+        work_next = (7 - off_counts[config['next_id']]) + (1 if st.session_state.get(f"full_ot_{config['emp_idx']}_Next") else 0)
+
+        if work_cur > 6: reasons.append(f"Current Week: Working **{work_cur} days** (Limit 6).")
+        if work_next > 6: reasons.append(f"Next Week: Working **{work_next} days** (Limit 6).")
+            
+        validation_results.append({"name": name, "reasons": reasons})
+
+    # Results Display
+    is_success = all(len(r["reasons"]) == 0 for r in validation_results)
+    if is_success:
+        st.markdown("<div class='status-container approved'><h2 style='text-align: center;'>✅ Swap Approved</h2></div>", unsafe_allow_html=True)
+        st.balloons()
+    else:
+        html = "<div class='status-container rejected'><h2 style='text-align: center;'>❌ Swap Rejected</h2>"
+        for res in validation_results:
+            html += f"<div class='emp-header'>{res['name']}</div>"
+            if res["reasons"]:
+                for r in res["reasons"]: html += f"<div class='reason-item'>{r}</div>"
+            else:
+                html += "<div class='reason-item' style='color: #a5d6a7;'>✅ Schedule is safe.</div>"
+        st.markdown(html + "</div>", unsafe_allow_html=True)
+
+st.markdown("<br><center><b>Created by Abdelrahman heshmat @abheshma</b></center>", unsafe_allow_html=True)
