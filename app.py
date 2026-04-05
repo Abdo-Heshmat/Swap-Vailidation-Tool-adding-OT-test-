@@ -1,26 +1,7 @@
 import streamlit as st
 from datetime import datetime, timedelta
 
-# --- 1. SET UP THEME STATE ---
-if "theme" not in st.session_state:
-    st.session_state.theme = "dark"
-
-def toggle_theme():
-    st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
-
-# --- 2. THEME COLORS ---
-if st.session_state.theme == "dark":
-    bg_color = "#0e1117"
-    box_bg = "#1e2129"
-    text_color = "#ffffff"
-    border_color = "#3e4451"
-else:
-    bg_color = "#ffffff"
-    box_bg = "#f0f2f6"
-    text_color = "#000000"
-    border_color = "#d1d5db"
-
-# --- Helper Functions ---
+# --- 1. Helper Functions ---
 def calculate_end_time(start_time_str, duration):
     start_dt = datetime.strptime(start_time_str, "%I %p")
     end_dt = start_dt + timedelta(hours=duration)
@@ -36,151 +17,127 @@ def get_dt(day_idx, time_str, is_end_time=False, start_time_str=None):
     time_obj = datetime.strptime(time_str, "%I %p").time()
     return datetime.combine(target_date, time_obj)
 
-# --- 3. UI STYLING (Updated with Theme Variables) ---
+# --- 2. NATIVE UI STYLING ---
 st.set_page_config(layout="wide", page_title="Swap Validator Pro")
 
-st.markdown(f"""
+# Using CSS Variables ensures it follows the user's system theme automatically
+st.markdown("""
     <style>
-    .stApp {{ background-color: {bg_color}; color: {text_color}; max-width: 1100px; margin: 0 auto; }}
-    input[type="text"], .stNumberInput input {{ 
-        text-align: center !important; 
-        background-color: {box_bg} !important; 
-        color: {text_color} !important; 
-        border: 1px solid {border_color} !important; 
-        border-radius: 8px !important; 
-    }}
-    
-    .match-box {{ 
-        background-color: {box_bg}; 
-        color: {text_color}; 
-        padding: 0 15px; 
-        border-radius: 8px; 
-        border: 1px solid {border_color}; 
-        text-align: left; 
-        font-size: 1rem; 
-        height: 45px; 
-        line-height: 45px; 
-        display: flex; 
-        align-items: center; 
-        justify-content: center;
-    }}
+    /* Card design using native theme variables */
+    .native-card {
+        background-color: var(--secondary-bg-color);
+        border: 1px solid var(--border-color);
+        padding: 1.5rem;
+        border-radius: 0.75rem;
+        margin-bottom: 1rem;
+    }
 
-    .rules-box {{ background-color: {box_bg}; padding: 20px; border-radius: 10px; border-left: 5px solid #007bff; margin-bottom: 20px; }}
-    .status-container {{ padding: 20px; border-radius: 12px; margin-top: 15px; }}
-    .approved {{ background-color: #1b5e20; color: white; border: 2px solid #ffffff; }}
-    .rejected {{ background-color: #b71c1c; color: white; border: 2px solid #ffffff; }}
+    /* Shift display box */
+    .shift-box {
+        background-color: var(--background-color);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        padding: 10px;
+        border-radius: 8px;
+        text-align: center;
+        font-weight: bold;
+        height: 45px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    h1, h2, h3 {
+        text-align: center;
+    }
+
+    /* Remove extra padding from streamlit columns */
+    [data-testid="column"] {
+        padding: 0 5px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- SIDEBAR THEME TOGGLE ---
+# --- 3. SIDEBAR ---
 with st.sidebar:
-    st.title("Settings")
-    theme_label = "☀️ Switch to Light Mode" if st.session_state.theme == "dark" else "🌙 Switch to Dark Mode"
-    st.button(theme_label, on_click=toggle_theme)
+    st.header("⚙️ Settings")
+    is_ramadan = st.checkbox("🌙 Ramadan Mode (7h)")
+    st.info("The app will automatically match your browser's Light/Dark settings.")
 
-st.markdown("<h1 style='text-align: center;'>🔄 Smart Swap Validator</h1>", unsafe_allow_html=True)
-
-# --- Rules Section ---
-with st.expander("📋 View Validation Rules & OT Logic", expanded=False):
-    st.markdown(f"""
-    <div class='rules-box'>
-        <b>✅ Rules Applied:</b><br>
-        * Ramadan Duration: 7 hours.<br>
-        * Normal Duration: 9 hours.<br>
-        * Max OT: 2 hours (Pre/Post).
-    </div>
-    """, unsafe_allow_html=True)
-
-is_ramadan = st.checkbox("🌙 Ramadan's shifts (7 hours)")
 duration = 7 if is_ramadan else 9
+
+st.markdown("<h1>🔄 Smart Swap Validator</h1>", unsafe_allow_html=True)
 
 day_list = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 hours = [datetime.strptime(str(i), "%H").strftime("%I %p") for i in range(24)]
 
 col1, col2 = st.columns(2)
-shift_starts, shift_ends, off_counts, off_days = {}, {}, {}, {}
+shift_data = {}
 
 for i, col in enumerate([col1, col2], 1):
     with col:
-        st.markdown(f"<h3 style='text-align: center;'>👤 Employee {i}</h3>", unsafe_allow_html=True)
-        st.text_input(f"Name {i}", placeholder=f"Employee {i} Name", key=f"user_name_{i}", label_visibility="collapsed")
+        st.markdown(f"### 👤 Employee {i}")
+        e_name = st.text_input(f"Name", placeholder=f"Employee {i} Name", key=f"name_{i}", label_visibility="collapsed")
         
         for week in ["Current", "Next"]:
-            with st.container(border=True):
-                st.markdown(f"<center><b>🗓️ {week} Week</b></center>", unsafe_allow_html=True)
-                
-                t1, t2, t3 = st.columns([3, 1, 3])
-                with t1:
-                    s_time = st.selectbox(f"Start {i}{week}", hours, index=17 if i==1 and week=="Current" else 9, key=f"s{i}_{week}", label_visibility="collapsed")
-                with t2: st.write("<br><center>to</center>", unsafe_allow_html=True)
-                with t3:
-                    e_time = calculate_end_time(s_time, duration)
-                    # Removed the arrow logic here
-                    st.markdown(f"<div class='match-box'><span>{e_time}</span></div>", unsafe_allow_html=True)
-                    shift_starts[f"e{i}_{week}"] = s_time
-                    shift_ends[f"e{i}_{week}"] = e_time
+            # Start of the Native Card
+            st.markdown(f'<div class="native-card">', unsafe_allow_html=True)
+            st.markdown(f"<center><b>🗓️ {week} Week</b></center>", unsafe_allow_html=True)
+            
+            t1, t2, t3 = st.columns([4, 1, 4])
+            with t1:
+                s_time = st.selectbox(f"Start", hours, index=17 if i==1 and week=="Current" else 9, key=f"s{i}_{week}")
+            with t2:
+                st.markdown("<p style='text-align:center; padding-top:35px;'>to</p>", unsafe_allow_html=True)
+            with t3:
+                e_time = calculate_end_time(s_time, duration)
+                st.markdown("<p style='font-size:0.8rem; margin-bottom:10px;'>End Time</p>", unsafe_allow_html=True)
+                st.markdown(f"<div class='shift-box'>{e_time}</div>", unsafe_allow_html=True)
+            
+            o1, o2 = st.columns(2)
+            off1 = o1.selectbox("Off Day 1", ["None"] + day_list, key=f"o1_{i}_{week}")
+            off2 = o2.selectbox("Off Day 2", ["None"] + [d for d in day_list if d != off1], key=f"o2_{i}_{week}")
 
-                st.write("Days Off:")
-                d_col1, d_col2 = st.columns(2)
-                off1 = d_col1.selectbox(f"Off1 {i}{week}", ["First Day off"] + day_list, key=f"d{i}a_{week}", label_visibility="collapsed")
-                filtered_days = [d for d in day_list if d != off1] 
-                off2 = d_col2.selectbox(f"Off2 {i}{week}", ["Second Day off"] + filtered_days, key=f"d{i}b_{week}", label_visibility="collapsed")
-                
-                with st.expander("➕ Add Overtime"):
-                    oc1, oc2 = st.columns(2)
-                    oc1.number_input("OT Before (hrs)", 0, 2, 0, key=f"ot_before_{i}_{week}")
-                    oc2.number_input("OT After (hrs)", 0, 2, 0, key=f"ot_after_{i}_{week}")
-                    st.checkbox("Full Day OT", key=f"full_ot_{i}_{week}")
-
-                count = 0
-                if off1 != "First Day off": count += 1
-                if off2 != "Second Day off": count += 1
-                off_counts[f"e{i}_{week}"] = count
-                off_days[f"e{i}_{week}"] = [off1, off2]
+            with st.expander("➕ Overtime"):
+                ot_b = st.number_input("Before (hrs)", 0, 2, 0, key=f"otb_{i}_{week}")
+                ot_a = st.number_input("After (hrs)", 0, 2, 0, key=f"ota_{i}_{week}")
+                st.checkbox("Full Day OT", key=f"f_ot_{i}_{week}")
+            
+            st.markdown('</div>', unsafe_allow_html=True) # End of the Card
+            
+            shift_data[f"e{i}_{week}"] = {
+                "start": s_time, "end": e_time, 
+                "off_count": (1 if off1 != "None" else 0) + (1 if off2 != "None" else 0),
+                "off_days": [off1, off2]
+            }
 
 st.divider()
 
 if st.button("🚀 Run Swap Check", use_container_width=True):
-    validation_results = []
-    swap_config = {
-        1: {"cur_id": "e1_Current", "next_id": "e2_Next", "name_key": "user_name_1", "emp_idx": 1},
-        2: {"cur_id": "e2_Current", "next_id": "e1_Next", "name_key": "user_name_2", "emp_idx": 2}
-    }
-
-    for emp_num, config in swap_config.items():
+    # Validation Logic
+    all_reasons = []
+    for emp_idx in [1, 2]:
+        name = st.session_state[f"name_{emp_idx}"] or f"Employee {emp_idx}"
         reasons = []
-        name = st.session_state[config['name_key']] if st.session_state[config['name_key']] else f"Employee {emp_num}"
-        dt_end = get_dt(7, shift_ends[config['cur_id']], is_end_time=True, start_time_str=shift_starts[config['cur_id']])
-        dt_start = get_dt(8, shift_starts[config['next_id']])
+        
+        # Define current vs next
+        cur_key = f"e{emp_idx}_Current"
+        next_key = f"e{3-emp_idx}_Next" # Checks against the other employee's next week
+        
+        d_end = get_dt(7, shift_data[cur_key]["end"], is_end_time=True, start_time_str=shift_data[cur_key]["start"])
+        d_start = get_dt(8, shift_data[next_key]["start"])
 
-        ot_after_hrs = min(st.session_state.get(f"ot_after_{config['emp_idx']}_Current", 0), 2)
-        dt_end += timedelta(hours=ot_after_hrs)
-        ot_before_hrs = min(st.session_state.get(f"ot_before_{config['emp_idx']}_Next", 0), 2)
-        dt_start -= timedelta(hours=ot_before_hrs)
+        # OT Squeeze
+        d_end += timedelta(hours=st.session_state[f"ota_{emp_idx}_Current"])
+        d_start -= timedelta(hours=st.session_state[f"otb_{3-emp_idx}_Next"])
 
-        is_off_sat = "Saturday" in off_days[config['cur_id']]
-        is_off_sun = "Sunday" in off_days[config['next_id']]
+        rest = (d_start - d_end).total_seconds() / 3600
+        if rest < 12 and not ("Saturday" in shift_data[cur_key]["off_days"] or "Sunday" in shift_data[next_key]["off_days"]):
+            reasons.append(f"Rest is only {rest:.1f}h (Min 12h required).")
+        
+        if reasons:
+            st.error(f"❌ **{name}:** " + " | ".join(reasons))
+        else:
+            st.success(f"✅ **{name}:** Schedule is valid.")
 
-        if not (is_off_sat or is_off_sun):
-            rest = (dt_start - dt_end).total_seconds() / 3600
-            if rest < 12: reasons.append(f"Insufficient Rest: Only **{rest:.1f}h**.")
-
-        work_cur = (7 - off_counts[config['cur_id']]) + (1 if st.session_state.get(f"full_ot_{config['emp_idx']}_Current") else 0)
-        work_next = (7 - off_counts[config['next_id']]) + (1 if st.session_state.get(f"full_ot_{config['emp_idx']}_Next") else 0)
-
-        if work_cur > 6: reasons.append(f"Current Week: Working {work_cur} days.")
-        if work_next > 6: reasons.append(f"Next Week: Working {work_next} days.")
-            
-        validation_results.append({"name": name, "reasons": reasons})
-
-    is_success = all(len(r["reasons"]) == 0 for r in validation_results)
-    if is_success:
-        st.markdown("<div class='status-container approved'><h2 style='text-align: center;'>✅ Swap Approved</h2></div>", unsafe_allow_html=True)
-    else:
-        html = "<div class='status-container rejected'><h2 style='text-align: center;'>❌ Swap Rejected</h2>"
-        for res in validation_results:
-            html += f"<b>{res['name']}</b><br>"
-            for r in res["reasons"]: html += f"- {r}<br>"
-        st.markdown(html + "</div>", unsafe_allow_html=True)
-
-st.markdown("<br><center><b>Created by Abdelrahman heshmat @abheshma</b></center>", unsafe_allow_html=True)
+st.markdown("<br><center>Created by Abdelrahman heshmat @abheshma</center>", unsafe_allow_html=True)
