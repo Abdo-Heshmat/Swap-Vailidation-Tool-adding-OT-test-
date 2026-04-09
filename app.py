@@ -16,6 +16,7 @@ else:
 
 st.set_page_config(layout="wide", page_title="Smart Swap Validator")
 
+# Custom CSS for UI and the small bottom-left test button
 st.markdown(f"""
     <style>
     .stApp {{ background-color: {bg}; color: {txt}; max-width: 1100px; margin: 0 auto; }}
@@ -31,114 +32,22 @@ st.markdown(f"""
     h1 {{ color: {txt}; display: flex; align-items: center; justify-content: center; font-size: 28px; }}
     h3 {{ color: {txt}; text-align: center; margin-bottom: 20px; }}
     .shift-label {{ font-size: 14px; font-weight: bold; margin-bottom: 5px; color: {txt}; }}
+    
+    /* Fixed small button style for testing */
+    .test-btn-container {{
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        z-index: 999;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATA LISTS ---
+# --- 2. DATA LISTS & RANDOMIZER ---
 days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 hrs = [datetime.strptime(str(i), "%H").strftime("%I %p") for i in range(24)]
-names_pool = ["Ahmed", "Sarah", "Omar", "Layla", "Youssef", "Mariam"]
 
-# --- 3. RANDOMIZER FUNCTION ---
 def load_random_data():
     for i in [1, 2]:
-        st.session_state[f"un{i}"] = random.choice(names_pool)
+        st.session_state[f"un{i}"] = random.choice(["Abdelrahman", "Sarah", "Ahmed", "Mariam"])
         for wk in ["Current", "Next"]:
-            st.session_state[f"s{i}{wk}"] = random.choice(hrs)
-            st.session_state[f"o1{i}{wk}"] = random.choice(days)
-            st.session_state[f"o2{i}{wk}"] = random.choice([d for d in days if d != st.session_state[f"o1{i}{wk}"]])
-
-# --- 4. HEADER & TEST BUTTON ---
-h_col, t_col = st.columns([9, 1])
-with t_col:
-    st.button(btn, on_click=toggle_theme)
-with h_col:
-    st.markdown(f"<h1><span style='margin-right:15px;'>👤🔁👤</span>Smart Swap Validator Pro</h1>", unsafe_allow_html=True)
-
-st.button("🎲 Load Random Test Data", on_click=load_random_data, use_container_width=True)
-
-is_ramadan = st.checkbox("🌙 Ramadan Mode (7h)")
-dur = 7 if is_ramadan else 9
-
-# --- 5. UI GENERATION ---
-shift_data = {}
-c1, c2 = st.columns(2)
-
-for i, col in enumerate([c1, c2], 1):
-    with col:
-        st.markdown(f"### 👤 Employee {i}")
-        st.text_input("Name", key=f"un{i}", placeholder=f"Enter Employee {i} Name", label_visibility="collapsed")
-        
-        for wk in ["Current", "Next"]:
-            with st.container(border=True):
-                st.markdown(f"<center><b>🗓️ {wk} Week</b></center>", unsafe_allow_html=True)
-                
-                h1, h2, h3 = st.columns([4, 1, 4])
-                h1.markdown("<p class='shift-label'>Start of shift</p>", unsafe_allow_html=True)
-                h3.markdown("<p class='shift-label'>End of shift</p>", unsafe_allow_html=True)
-                
-                t1, t2, t3 = st.columns([4, 1, 4])
-                with t1: 
-                    s_t = st.selectbox(f"Start{i}{wk}", hrs, key=f"s{i}{wk}", label_visibility="collapsed")
-                with t2: 
-                    st.markdown("<p style='text-align:center; padding-top:10px;'>to</p>", unsafe_allow_html=True)
-                with t3:
-                    start_dt = datetime.strptime(s_t, "%I %p")
-                    e_t = (start_dt + timedelta(hours=dur)).strftime("%I %p")
-                    st.markdown(f"<div class='unified-box'>{e_t}</div>", unsafe_allow_html=True)
-                
-                st.markdown("<p class='shift-label' style='margin-top:10px;'>Days Off:</p>", unsafe_allow_html=True)
-                d1, d2 = st.columns(2)
-                off1 = d1.selectbox(f"O1{i}{wk}", ["First Day off"] + days, key=f"o1{i}{wk}", label_visibility="collapsed")
-                # Filter to avoid duplicate selection
-                remain = [d for d in days if d != off1]
-                off2 = d2.selectbox(f"O2{i}{wk}", ["Second Day off"] + remain, key=f"o2{i}{wk}", label_visibility="collapsed")
-            
-            real_offs = sorted([days.index(o)+1 for o in [off1, off2] if o in days])
-            shift_data[f"e{i}_{wk}"] = {"s": s_t, "e": e_t, "off": real_offs}
-
-st.divider()
-
-# --- 6. VALIDATION LOGIC ---
-def get_dt(day_idx, time_str, is_end=False, s_time_str=None):
-    base = datetime(2026, 3, 22) 
-    dt = base + timedelta(days=day_idx-1)
-    t_obj = datetime.strptime(time_str, "%I %p")
-    final_dt = datetime.combine(dt, t_obj.time())
-    if is_end and s_time_str:
-        s_obj = datetime.strptime(s_time_str, "%I %p")
-        if t_obj.hour < s_obj.hour:
-            final_dt += timedelta(days=1)
-    return final_dt
-
-if st.button("🚀 Run Swap Check", use_container_width=True):
-    results = []
-    configs = {1: {"c": "e1_Current", "n": "e2_Next", "u": "un1"}, 2: {"c": "e2_Current", "n": "e1_Next", "u": "un2"}}
-
-    for en, cfg in configs.items():
-        reasons = []
-        name = st.session_state[cfg['u']] or f"Employee {en}"
-        
-        # 12H Rest Check
-        is_exempt = (7 in shift_data[cfg['c']]["off"]) or (1 in shift_data[cfg['n']]["off"])
-        if is_exempt:
-            reasons.append("✅ Rest rule waived (Off Saturday or Sunday).")
-        else:
-            dt_e = get_dt(7, shift_data[cfg['c']]["e"], True, shift_data[cfg['c']]["s"])
-            dt_s = get_dt(8, shift_data[cfg['n']]["s"])
-            rest = (dt_s - dt_e).total_seconds() / 3600
-            
-            if rest < 12: reasons.append(f"❌ Insufficient Rest: **{rest:.1f}h**")
-            else: reasons.append(f"✅ Sufficient Rest: **{rest:.1f}h**")
-            
-        results.append({"name": name, "msgs": reasons})
-
-    success = all("❌" not in " ".join(r["msgs"]) for r in results)
-    st.markdown(f"<div style='background-color:{'#1b5e20' if success else '#b71c1c'}; padding:20px; border-radius:12px; color:white;'>", unsafe_allow_html=True)
-    st.markdown(f"<h2 style='text-align:center; color:white;'>{'✅ Swap Approved' if success else '❌ Swap Rejected'}</h2>", unsafe_allow_html=True)
-    for r in results:
-        st.write(f"**{r['name']}**")
-        for m in r['msgs']: st.write(m)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("<br><center>Created by Abdelrahman heshmat @abheshma</center>", unsafe_allow_html=True)
