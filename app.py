@@ -15,7 +15,7 @@ else:
 
 st.set_page_config(layout="wide", page_title="Smart Swap Validator")
 
-# Custom CSS
+# Custom CSS for Native Look
 st.markdown(f"""
     <style>
     .stApp {{ background-color: {bg}; color: {txt}; max-width: 1100px; margin: 0 auto; }}
@@ -46,22 +46,13 @@ def get_dt(day_idx, time_str, is_end=False, s_time_str=None):
             final_dt += timedelta(days=1)
     return final_dt
 
-# --- 3. CUSTOM ICON & HEADER ---
-custom_swap_svg = f"""
-    <svg xmlns="http://www.w3.org/2000/svg" width="35" height="35" viewBox="0 0 40 40">
-        <circle cx="15.8" cy="17.6" r="14.4" fill="none" stroke="{txt}" stroke-width="2.1"/>
-        <circle cx="28.9" cy="11.2" r="6.2" fill="none" stroke="{txt}" stroke-width="2.1"/>
-        <path d="M25.8 14.3 C25.8 12.6, 32.0 12.6, 32.0 14.3 Z" fill="{txt}"/>
-        <circle cx="12.0" cy="24.3" r="6.2" fill="none" stroke="{txt}" stroke-width="2.1"/>
-        <path d="M8.9 27.4 C8.9 25.7, 15.1 25.7, 15.1 27.4 Z" fill="{txt}"/>
-    </svg>
-"""
-
+# --- 3. HEADER WITH NEW EMOJI LOGO ---
 h_col, t_col = st.columns([9, 1])
 with t_col:
     st.button(btn, on_click=toggle_theme)
 with h_col:
-    st.markdown(f"<h1><span style='margin-right:15px;'>{custom_swap_svg}</span>Smart Swap Validator Pro</h1>", unsafe_allow_html=True)
+    # UPDATED: Using the emoji swap logo
+    st.markdown(f"<h1><span style='margin-right:15px;'>👤🔁👤</span>Smart Swap Validator Pro</h1>", unsafe_allow_html=True)
 
 # --- 4. GLOBAL SETTINGS ---
 is_ramadan = st.checkbox("🌙 Ramadan Mode (7h)")
@@ -82,22 +73,22 @@ for i, col in enumerate([c1, c2], 1):
             with st.container(border=True):
                 st.markdown(f"<center><b>🗓️ {wk} Week</b></center>", unsafe_allow_html=True)
                 
-                # HEADERS for Start and End
+                # UPDATED: Added clear labels above the boxes
                 h1, h2, h3 = st.columns([4, 1, 4])
                 h1.markdown("<p class='shift-label'>Start of shift</p>", unsafe_allow_html=True)
                 h3.markdown("<p class='shift-label'>End of shift</p>", unsafe_allow_html=True)
                 
                 t1, t2, t3 = st.columns([4, 1, 4])
                 with t1: 
-                    s_t = st.selectbox(f"Start{i}{wk}", hrs, index=9, key=f"s{i}{wk}", label_visibility="collapsed")
+                    s_t = st.selectbox(f"S{i}{wk}", hrs, index=9, key=f"s{i}{wk}", label_visibility="collapsed")
                 with t2: 
                     st.markdown("<p style='text-align:center; padding-top:10px;'>to</p>", unsafe_allow_html=True)
                 with t3:
-                    # AUTOMATIC CALCULATION logic inside the loop
+                    # UPDATED: Automatic 9h (or 7h) calculation logic
                     start_dt = datetime.strptime(s_t, "%I %p")
                     end_dt = start_dt + timedelta(hours=dur)
                     e_t = end_dt.strftime("%I %p")
-                    # Displaying the calculated end time in a clean, matching box
+                    # Display the result in a clean, matching box
                     st.markdown(f"<div class='unified-box'>{e_t}</div>", unsafe_allow_html=True)
                 
                 st.markdown("<p class='shift-label' style='margin-top:10px;'>Days Off:</p>", unsafe_allow_html=True)
