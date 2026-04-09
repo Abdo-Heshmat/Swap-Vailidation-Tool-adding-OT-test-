@@ -15,7 +15,7 @@ else:
 
 st.set_page_config(layout="wide", page_title="Smart Swap Validator")
 
-# Custom CSS for Native Look
+# Custom CSS
 st.markdown(f"""
     <style>
     .stApp {{ background-color: {bg}; color: {txt}; max-width: 1100px; margin: 0 auto; }}
@@ -24,9 +24,13 @@ st.markdown(f"""
         background-color: {box} !important; color: {txt} !important;
         border: 1px solid {brd} !important; border-radius: 8px !important;
     }}
-    .unified-box {{ height: 42px; display: flex; align-items: center; justify-content: center; font-weight: bold; }}
-    h1 {{ color: {txt}; display: flex; align-items: center; justify-content: center; }}
-    h3 {{ color: {txt}; text-align: center; }}
+    .unified-box {{ 
+        height: 42px; display: flex; align-items: center; justify-content: center; 
+        font-weight: bold; background-color: {box}; border: 1px solid {brd}; border-radius: 8px;
+    }}
+    h1 {{ color: {txt}; display: flex; align-items: center; justify-content: center; font-size: 28px; }}
+    h3 {{ color: {txt}; text-align: center; margin-bottom: 20px; }}
+    .shift-label {{ font-size: 14px; font-weight: bold; margin-bottom: 5px; color: {txt}; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -44,13 +48,11 @@ def get_dt(day_idx, time_str, is_end=False, s_time_str=None):
 
 # --- 3. CUSTOM ICON & HEADER ---
 custom_swap_svg = f"""
-    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+    <svg xmlns="http://www.w3.org/2000/svg" width="35" height="35" viewBox="0 0 40 40">
         <circle cx="15.8" cy="17.6" r="14.4" fill="none" stroke="{txt}" stroke-width="2.1"/>
         <circle cx="28.9" cy="11.2" r="6.2" fill="none" stroke="{txt}" stroke-width="2.1"/>
-        <circle cx="28.9" cy="9.1" r="3.1" fill="{txt}"/>
         <path d="M25.8 14.3 C25.8 12.6, 32.0 12.6, 32.0 14.3 Z" fill="{txt}"/>
         <circle cx="12.0" cy="24.3" r="6.2" fill="none" stroke="{txt}" stroke-width="2.1"/>
-        <circle cx="12.0" cy="22.2" r="3.1" fill="{txt}"/>
         <path d="M8.9 27.4 C8.9 25.7, 15.1 25.7, 15.1 27.4 Z" fill="{txt}"/>
     </svg>
 """
@@ -65,9 +67,6 @@ with h_col:
 is_ramadan = st.checkbox("🌙 Ramadan Mode (7h)")
 dur = 7 if is_ramadan else 9
 
-with st.expander("📝 View Validation Rules"):
-    st.info("Min 12h rest between shifts | Max 6 consecutive work days. Rest rule waived if off Saturday or Sunday.")
-
 days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 hrs = [datetime.strptime(str(i), "%H").strftime("%I %p") for i in range(24)]
 
@@ -77,19 +76,31 @@ c1, c2 = st.columns(2)
 for i, col in enumerate([c1, c2], 1):
     with col:
         st.markdown(f"### 👤 Employee {i}")
-        st.text_input("Name", key=f"un{i}", placeholder=f"Employee {i} Name", label_visibility="collapsed")
+        st.text_input("Name", key=f"un{i}", placeholder=f"Enter Employee {i} Name", label_visibility="collapsed")
         
         for wk in ["Current", "Next"]:
             with st.container(border=True):
                 st.markdown(f"<center><b>🗓️ {wk} Week</b></center>", unsafe_allow_html=True)
-                t1, t2, t3 = st.columns([4, 1, 4])
-                with t1: s_t = st.selectbox(f"S{i}{wk}", hrs, index=9, key=f"s{i}{wk}")
-                with t2: st.markdown("<p style='text-align:center; padding-top:35px;'>to</p>", unsafe_allow_html=True)
-                with t3:
-                    e_t = (datetime.strptime(s_t, "%I %p") + timedelta(hours=dur)).strftime("%I %p")
-                    st.text_input(f"E{i}{wk}", value=e_t, disabled=True, key=f"disp_e{i}{wk}")
                 
-                st.write("Days Off:")
+                # HEADERS for Start and End
+                h1, h2, h3 = st.columns([4, 1, 4])
+                h1.markdown("<p class='shift-label'>Start of shift</p>", unsafe_allow_html=True)
+                h3.markdown("<p class='shift-label'>End of shift</p>", unsafe_allow_html=True)
+                
+                t1, t2, t3 = st.columns([4, 1, 4])
+                with t1: 
+                    s_t = st.selectbox(f"Start{i}{wk}", hrs, index=9, key=f"s{i}{wk}", label_visibility="collapsed")
+                with t2: 
+                    st.markdown("<p style='text-align:center; padding-top:10px;'>to</p>", unsafe_allow_html=True)
+                with t3:
+                    # AUTOMATIC CALCULATION logic inside the loop
+                    start_dt = datetime.strptime(s_t, "%I %p")
+                    end_dt = start_dt + timedelta(hours=dur)
+                    e_t = end_dt.strftime("%I %p")
+                    # Displaying the calculated end time in a clean, matching box
+                    st.markdown(f"<div class='unified-box'>{e_t}</div>", unsafe_allow_html=True)
+                
+                st.markdown("<p class='shift-label' style='margin-top:10px;'>Days Off:</p>", unsafe_allow_html=True)
                 d1, d2 = st.columns(2)
                 off1 = d1.selectbox(f"O1{i}{wk}", ["First Day off"] + days, key=f"o1{i}{wk}", label_visibility="collapsed")
                 off2 = d2.selectbox(f"O2{i}{wk}", ["Second Day off"] + [d for d in days if d != off1], key=f"o2{i}{wk}", label_visibility="collapsed")
@@ -97,7 +108,6 @@ for i, col in enumerate([c1, c2], 1):
                 with st.expander("➕ Overtime (Max 2h)"):
                     st.number_input("Before (hrs)", 0, 2, 0, key=f"otb_{i}_{wk}")
                     st.number_input("After (hrs)", 0, 2, 0, key=f"ota_{i}_{wk}")
-                    # TYPO FIXED: changed [week] to [wk]
                     st.checkbox("Full Day OT", key=f"f_ot_{i}_{wk}")
             
             real_offs = sorted([days.index(o)+1 for o in [off1, off2] if o in days])
@@ -120,7 +130,6 @@ if st.button("🚀 Run Swap Check", use_container_width=True):
         else:
             dt_e = get_dt(7, shift_data[cfg['c']]["e"], True, shift_data[cfg['c']]["s"])
             dt_s = get_dt(8, shift_data[cfg['n']]["s"])
-            # Adjust for OT
             dt_e += timedelta(hours=st.session_state[f"ota_{en}_Current"])
             dt_s -= timedelta(hours=st.session_state[f"otb_{3-en}_Next"])
             
@@ -132,7 +141,7 @@ if st.button("🚀 Run Swap Check", use_container_width=True):
 
     success = all("❌" not in " ".join(r["msgs"]) for r in results)
     st.markdown(f"<div style='background-color:{'#1b5e20' if success else '#b71c1c'}; padding:20px; border-radius:12px; color:white;'>", unsafe_allow_html=True)
-    st.markdown(f"<h2 style='text-align:center;'>{'✅ Approved' if success else '❌ Rejected'}</h2>", unsafe_allow_html=True)
+    st.markdown(f"<h2 style='text-align:center; color:white;'>{'✅ Swap Approved' if success else '❌ Swap Rejected'}</h2>", unsafe_allow_html=True)
     for r in results:
         st.write(f"**{r['name']}**")
         for m in r['msgs']: st.write(m)
