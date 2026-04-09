@@ -16,7 +16,7 @@ else:
 
 st.set_page_config(layout="wide", page_title="Smart Swap Validator")
 
-# Custom CSS for UI and the small bottom-left test button
+# Custom CSS
 st.markdown(f"""
     <style>
     .stApp {{ background-color: {bg}; color: {txt}; max-width: 1100px; margin: 0 auto; }}
@@ -33,21 +33,21 @@ st.markdown(f"""
     h3 {{ color: {txt}; text-align: center; margin-bottom: 20px; }}
     .shift-label {{ font-size: 14px; font-weight: bold; margin-bottom: 5px; color: {txt}; }}
     
-    /* Fixed small button style for testing */
+    /* Small Bottom-Left Test Button */
     .test-btn-container {{
         position: fixed;
         bottom: 20px;
         left: 20px;
-        z-index: 999;
+        z-index: 1000;
     }}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATA LISTS & RANDOMIZER ---
+# --- 2. DATA LISTS & CALLBACK ---
 days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 hrs = [datetime.strptime(str(i), "%H").strftime("%I %p") for i in range(24)]
 
-def load_random_data():
+def on_load_random():
     for i in [1, 2]:
         st.session_state[f"un{i}"] = random.choice(["Abdelrahman", "Sarah", "Ahmed", "Mariam"])
         for wk in ["Current", "Next"]:
@@ -77,16 +77,33 @@ for i, col in enumerate([c1, c2], 1):
                 h1, h2, h3 = st.columns([4, 1, 4])
                 h1.markdown("<p class='shift-label'>Start of shift</p>", unsafe_allow_html=True)
                 h3.markdown("<p class='shift-label'>End of shift</p>", unsafe_allow_html=True)
+                
                 t1, t2, t3 = st.columns([4, 1, 4])
-                with t1: s_t = st.selectbox(f"S{i}{wk}", hrs, key=f"s{i}{wk}", label_visibility="collapsed")
-                with t2: st.markdown("<p style='text-align:center; padding-top:10px;'>to</p>", unsafe_allow_html=True)
+                with t1: 
+                    # Default to 09 AM if not in session state yet
+                    curr_val = st.session_state.get(f"s{i}{wk}", "09 AM")
+                    if curr_val not in hrs: curr_val = "09 AM"
+                    s_t = st.selectbox(f"S{i}{wk}", hrs, index=hrs.index(curr_val), key=f"s{i}{wk}", label_visibility="collapsed")
+                with t2: 
+                    st.markdown("<p style='text-align:center; padding-top:10px;'>to</p>", unsafe_allow_html=True)
                 with t3:
                     e_t = (datetime.strptime(s_t, "%I %p") + timedelta(hours=dur)).strftime("%I %p")
                     st.markdown(f"<div class='unified-box'>{e_t}</div>", unsafe_allow_html=True)
+                
                 st.markdown("<p class='shift-label' style='margin-top:10px;'>Days Off:</p>", unsafe_allow_html=True)
                 d1, d2 = st.columns(2)
-                off1 = d1.selectbox(f"O1{i}{wk}", ["First Day off"] + days, key=f"o1{i}{wk}", label_visibility="collapsed")
-                off2 = d2.selectbox(f"O2{i}{wk}", ["Second Day off"] + [d for d in days if d != off1], key=f"o2{i}{wk}", label_visibility="collapsed")
+                
+                o1_val = st.session_state.get(f"o1{i}{wk}", "First Day off")
+                off1 = d1.selectbox(f"O1{i}{wk}", ["First Day off"] + days, 
+                                    index=(days.index(o1_val)+1 if o1_val in days else 0), 
+                                    key=f"o1{i}{wk}", label_visibility="collapsed")
+                
+                remain = [d for d in days if d != off1]
+                o2_val = st.session_state.get(f"o2{i}{wk}", "Second Day off")
+                off2 = d2.selectbox(f"O2{i}{wk}", ["Second Day off"] + remain, 
+                                    index=(remain.index(o2_val)+1 if o2_val in remain else 0), 
+                                    key=f"o2{i}{wk}", label_visibility="collapsed")
+                
                 with st.expander("➕ Overtime (Max 2h)"):
                     st.number_input("Before (hrs)", 0, 2, 0, key=f"otb_{i}_{wk}")
                     st.number_input("After (hrs)", 0, 2, 0, key=f"ota_{i}_{wk}")
@@ -115,13 +132,13 @@ if st.button("🚀 Run Swap Check", use_container_width=True):
         name = st.session_state[cfg['u']] or f"Employee {en}"
         is_exempt = (7 in shift_data[cfg['c']]["off"]) or (1 in shift_data[cfg['n']]["off"])
         if is_exempt:
-            reasons.append("✅ **Rest Rule Approved:** Waived because Saturday or Sunday is a Day Off.")
+            reasons.append("✅ **Approved:** Exemption applied (Saturday or Sunday is a Day Off).")
         else:
             dt_e = get_dt(7, shift_data[cfg['c']]["e"], True, shift_data[cfg['c']]["s"]) + timedelta(hours=st.session_state[f"ota_{en}_Current"])
             dt_s = get_dt(8, shift_data[cfg['n']]["s"]) - timedelta(hours=st.session_state[f"otb_{en}_Next"])
             rest = (dt_s - dt_e).total_seconds() / 3600
-            if rest < 12: reasons.append(f"❌ **Rest Rule Rejected:** Only **{rest:.1f}h** of rest (Min 12h required).")
-            else: reasons.append(f"✅ **Rest Rule Approved:** **{rest:.1f}h** of rest provided.")
+            if rest < 12: reasons.append(f"❌ **Rejected:** Rest gap is only **{rest:.1f}h** (Min 12h required).")
+            else: reasons.append(f"✅ **Approved:** Rest gap is **{rest:.1f}h**.")
         results.append({"name": name, "msgs": reasons})
 
     success = all("❌" not in " ".join(r["msgs"]) for r in results)
@@ -134,9 +151,7 @@ if st.button("🚀 Run Swap Check", use_container_width=True):
 
 st.markdown("<br><center>Created by Abdelrahman heshmat @abheshma</center>", unsafe_allow_html=True)
 
-# --- 6. MINI TEST BUTTON (BOTTOM LEFT) ---
+# --- 6. MINI TEST BUTTON ---
 st.markdown('<div class="test-btn-container">', unsafe_allow_html=True)
-if st.button("🎲 Test Data", key="mini_test_btn", help="Fill with random data for testing"):
-    load_random_data()
-    st.rerun()
+st.button("🎲 Test Data", key="mini_test_btn", on_click=on_load_random)
 st.markdown('</div>', unsafe_allow_html=True)
