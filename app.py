@@ -30,16 +30,13 @@ st.markdown(f"""
         font-weight: bold; background-color: {box}; border: 1px solid {brd}; border-radius: 8px;
     }}
     h1 {{ color: {txt}; display: flex; align-items: center; justify-content: center; font-size: 28px; }}
-    h3 {{ color: {txt}; text-align: center; margin-bottom: 20px; }}
+    .emp-header {{ color: {txt}; text-align: center; margin-bottom: 10px; font-weight: bold; font-size: 22px; }}
     .shift-label {{ font-size: 14px; font-weight: bold; margin-bottom: 5px; color: {txt}; }}
     
-    /* Small Bottom-Left Test Button */
-    .test-btn-container {{
-        position: fixed;
-        bottom: 20px;
-        left: 20px;
-        z-index: 1000;
-    }}
+    /* Center the Name Input */
+    div[data-testid="stTextInput"] > div {{ text-align: center; }}
+    
+    .test-btn-container {{ position: fixed; bottom: 20px; left: 20px; z-index: 1000; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -69,8 +66,10 @@ c1, c2 = st.columns(2)
 
 for i, col in enumerate([c1, c2], 1):
     with col:
-        st.markdown(f"### 👤 Employee {i}")
-        st.text_input("Name", key=f"un{i}", placeholder=f"Enter Employee {i} Name", label_visibility="collapsed")
+        # UPDATED: Centered Name Header
+        st.markdown(f"<div class='emp-header'>👤 Employee {i}</div>", unsafe_allow_html=True)
+        st.text_input(f"Name {i}", key=f"un{i}", placeholder=f"Enter Employee {i} Name", label_visibility="collapsed")
+        
         for wk in ["Current", "Next"]:
             with st.container(border=True):
                 st.markdown(f"<center><b>🗓️ {wk} Week</b></center>", unsafe_allow_html=True)
@@ -79,34 +78,31 @@ for i, col in enumerate([c1, c2], 1):
                 h3.markdown("<p class='shift-label'>End of shift</p>", unsafe_allow_html=True)
                 
                 t1, t2, t3 = st.columns([4, 1, 4])
-                with t1: 
-                    # Default to 09 AM if not in session state yet
+                with t1:
                     curr_val = st.session_state.get(f"s{i}{wk}", "09 AM")
-                    if curr_val not in hrs: curr_val = "09 AM"
-                    s_t = st.selectbox(f"S{i}{wk}", hrs, index=hrs.index(curr_val), key=f"s{i}{wk}", label_visibility="collapsed")
-                with t2: 
-                    st.markdown("<p style='text-align:center; padding-top:10px;'>to</p>", unsafe_allow_html=True)
+                    s_t = st.selectbox(f"S{i}{wk}", hrs, index=hrs.index(curr_val) if curr_val in hrs else 9, key=f"s{i}{wk}", label_visibility="collapsed")
+                with t2: st.markdown("<p style='text-align:center; padding-top:10px;'>to</p>", unsafe_allow_html=True)
                 with t3:
                     e_t = (datetime.strptime(s_t, "%I %p") + timedelta(hours=dur)).strftime("%I %p")
                     st.markdown(f"<div class='unified-box'>{e_t}</div>", unsafe_allow_html=True)
                 
                 st.markdown("<p class='shift-label' style='margin-top:10px;'>Days Off:</p>", unsafe_allow_html=True)
                 d1, d2 = st.columns(2)
-                
                 o1_val = st.session_state.get(f"o1{i}{wk}", "First Day off")
-                off1 = d1.selectbox(f"O1{i}{wk}", ["First Day off"] + days, 
-                                    index=(days.index(o1_val)+1 if o1_val in days else 0), 
-                                    key=f"o1{i}{wk}", label_visibility="collapsed")
+                off1 = d1.selectbox(f"O1{i}{wk}", ["First Day off"] + days, index=(days.index(o1_val)+1 if o1_val in days else 0), key=f"o1{i}{wk}", label_visibility="collapsed")
                 
                 remain = [d for d in days if d != off1]
                 o2_val = st.session_state.get(f"o2{i}{wk}", "Second Day off")
-                off2 = d2.selectbox(f"O2{i}{wk}", ["Second Day off"] + remain, 
-                                    index=(remain.index(o2_val)+1 if o2_val in remain else 0), 
-                                    key=f"o2{i}{wk}", label_visibility="collapsed")
+                off2 = d2.selectbox(f"O2{i}{wk}", ["Second Day off"] + remain, index=(remain.index(o2_val)+1 if o2_val in remain else 0), key=f"o2{i}{wk}", label_visibility="collapsed")
                 
                 with st.expander("➕ Overtime (Max 2h)"):
-                    st.number_input("Before (hrs)", 0, 2, 0, key=f"otb_{i}_{wk}")
-                    st.number_input("After (hrs)", 0, 2, 0, key=f"ota_{i}_{wk}")
+                    # UPDATED: Mutual Exclusion Logic
+                    ot_b_key = f"otb_{i}_{wk}"
+                    ot_a_key = f"ota_{i}_{wk}"
+                    
+                    # Prevent 'After' if 'Before' > 0, and vice versa
+                    ot_b = st.number_input("Before (hrs)", 0, 2, 0, key=ot_b_key, disabled=st.session_state.get(ot_a_key, 0) > 0)
+                    ot_a = st.number_input("After (hrs)", 0, 2, 0, key=ot_a_key, disabled=st.session_state.get(ot_b_key, 0) > 0)
             
             real_offs = sorted([days.index(o)+1 for o in [off1, off2] if o in days])
             shift_data[f"e{i}_{wk}"] = {"s": s_t, "e": e_t, "off": real_offs}
@@ -114,16 +110,6 @@ for i, col in enumerate([c1, c2], 1):
 st.divider()
 
 # --- 5. LOGIC & RESULTS ---
-def get_dt(day_idx, time_str, is_end=False, s_time_str=None):
-    base = datetime(2026, 3, 22) 
-    dt = base + timedelta(days=day_idx-1)
-    t_obj = datetime.strptime(time_str, "%I %p")
-    final_dt = datetime.combine(dt, t_obj.time())
-    if is_end and s_time_str:
-        s_obj = datetime.strptime(s_time_str, "%I %p")
-        if t_obj.hour < s_obj.hour: final_dt += timedelta(days=1)
-    return final_dt
-
 if st.button("🚀 Run Swap Check", use_container_width=True):
     results = []
     configs = {1: {"c": "e1_Current", "n": "e2_Next", "u": "un1"}, 2: {"c": "e2_Current", "n": "e1_Next", "u": "un2"}}
@@ -134,8 +120,8 @@ if st.button("🚀 Run Swap Check", use_container_width=True):
         if is_exempt:
             reasons.append("✅ **Approved:** Exemption applied (Saturday or Sunday is a Day Off).")
         else:
-            dt_e = get_dt(7, shift_data[cfg['c']]["e"], True, shift_data[cfg['c']]["s"]) + timedelta(hours=st.session_state[f"ota_{en}_Current"])
-            dt_s = get_dt(8, shift_data[cfg['n']]["s"]) - timedelta(hours=st.session_state[f"otb_{en}_Next"])
+            dt_e = get_dt(7, shift_data[cfg['c']]["e"], True, shift_data[cfg['c']]["s"]) + timedelta(hours=st.session_state.get(f"ota_{en}_Current", 0))
+            dt_s = get_dt(8, shift_data[cfg['n']]["s"]) - timedelta(hours=st.session_state.get(f"otb_{en}_Next", 0))
             rest = (dt_s - dt_e).total_seconds() / 3600
             if rest < 12: reasons.append(f"❌ **Rejected:** Rest gap is only **{rest:.1f}h** (Min 12h required).")
             else: reasons.append(f"✅ **Approved:** Rest gap is **{rest:.1f}h**.")
