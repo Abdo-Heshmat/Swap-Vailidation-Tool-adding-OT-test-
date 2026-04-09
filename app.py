@@ -22,7 +22,6 @@ st.markdown(f"""
         border: 1px solid {brd} !important; border-radius: 8px !important;
         text-align: center !important;
     }}
-    /* Centering logic for name and labels */
     div[data-testid="stTextInput"] input, .stSelectbox div {{ text-align: center !important; }}
     .emp-header {{ text-align: center; font-weight: bold; font-size: 22px; margin-bottom: 10px; }}
     .shift-label {{ font-size: 13px; font-weight: bold; text-align: center; margin-bottom: 5px; opacity: 0.8; }}
@@ -42,7 +41,7 @@ def on_load_random():
             st.session_state[f"s{i}{wk}"] = random.choice(hrs)
             st.session_state[f"o1{i}{wk}"] = random.choice(days)
             st.session_state[f"o2{i}{wk}"] = random.choice([d for d in days if d != st.session_state[f"o1{i}{wk}"]])
-            st.session_state[f"do_ot1_{i}_{wk}"] = False # Reset OT for clean test
+            st.session_state[f"do_ot1_{i}_{wk}"] = False 
 
 def get_dt(day_idx, time_str, is_end=False, s_time_str=None):
     base = datetime(2026, 3, 22) 
@@ -74,7 +73,6 @@ for i, col in enumerate([c1, c2], 1):
             with st.container(border=True):
                 st.markdown(f"<center><b>🗓️ {wk} Week</b></center>", unsafe_allow_html=True)
                 
-                # Times
                 t_cols = st.columns([4, 1, 4])
                 with t_cols[0]:
                     s_t = st.selectbox(f"S{i}{wk}", hrs, index=hrs.index(st.session_state.get(f"s{i}{wk}", "09 AM")), key=f"s{i}{wk}", label_visibility="collapsed")
@@ -83,24 +81,28 @@ for i, col in enumerate([c1, c2], 1):
                     e_t = (datetime.strptime(s_t, "%I %p") + timedelta(hours=dur)).strftime("%I %p")
                     st.markdown(f"<div class='unified-box'>{e_t}</div>", unsafe_allow_html=True)
                 
-                # Days Off & OT (MUTUAL EXCLUSION)
                 st.markdown("<p class='shift-label'>Days Off & 6th Day OT</p>", unsafe_allow_html=True)
                 
-                # Day 1 Logic
                 d1_col1, d1_col2 = st.columns([2, 1])
                 off1 = d1_col1.selectbox(f"O1{i}{wk}", ["1st Day Off"] + days, key=f"o1{i}{wk}", label_visibility="collapsed")
                 do_ot1 = d1_col2.toggle("Work OT", key=f"do_ot1_{i}_{wk}", disabled=st.session_state.get(f"do_ot2_{i}_{wk}", False))
                 
-                # Day 2 Logic
                 d2_col1, d2_col2 = st.columns([2, 1])
                 remain = [d for d in days if d != off1]
                 off2 = d2_col1.selectbox(f"O2{i}{wk}", ["2nd Day Off"] + remain, key=f"o2{i}{wk}", label_visibility="collapsed")
                 do_ot2 = d2_col2.toggle("Work OT", key=f"do_ot2_{i}_{wk}", disabled=st.session_state.get(f"do_ot1_{i}_{wk}", False))
                 
-                # Daily Overtime
-                with st.expander("➕ Daily OT (Max 2h)"):
-                    st.number_input("Before", 0, 2, 0, key=f"otb_{i}_{wk}", disabled=st.session_state.get(f"ota_{i}_{wk}", 0) > 0)
-                    st.number_input("After", 0, 2, 0, key=f"ota_{i}_{wk}", disabled=st.session_state.get(f"otb_{i}_{wk}", 0) > 0)
+                with st.expander("➕ Daily OT (Max 2h Total)"):
+                    # UPDATED OT LOGIC: Combined limit of 2 hours
+                    ot_b_val = st.session_state.get(f"otb_{i}_{wk}", 0)
+                    ot_a_val = st.session_state.get(f"ota_{i}_{wk}", 0)
+                    
+                    # Calculate remaining capacity for each box
+                    max_b = 2 - ot_a_val
+                    max_a = 2 - ot_b_val
+                    
+                    st.number_input("Before", 0, 2 if max_b > 2 else max_b, key=f"otb_{i}_{wk}")
+                    st.number_input("After", 0, 2 if max_a > 2 else max_a, key=f"ota_{i}_{wk}")
             
             actual_offs = []
             if off1 in days and not do_ot1: actual_offs.append(days.index(off1)+1)
@@ -116,7 +118,6 @@ if st.button("🚀 Run Swap Check", use_container_width=True):
         reasons = []
         name = st.session_state[cfg['u']] or f"Employee {en}"
         
-        # 12H Rest Check (Waived only if TRULY off on Sat/Sun)
         is_exempt = (7 in shift_data[cfg['c']]["off"]) or (1 in shift_data[cfg['n']]["off"])
         if is_exempt:
             reasons.append("✅ **Rest Rule:** Waived (Off Saturday or Sunday).")
@@ -126,7 +127,6 @@ if st.button("🚀 Run Swap Check", use_container_width=True):
             rest = (dt_s - dt_e).total_seconds() / 3600
             reasons.append(f"{'✅' if rest >= 12 else '❌'} **Rest Rule:** {rest:.1f}h gap (Min 12h).")
 
-        # Consecutive Days Rule (Max 6)
         last_off = shift_data[cfg['c']]["off"][-1] if shift_data[cfg['c']]["off"] else 0
         next_off = shift_data[cfg['n']]["off"][0] if shift_data[cfg['n']]["off"] else 8
         working_streak = (7 - last_off) + (next_off - 1)
@@ -142,7 +142,6 @@ if st.button("🚀 Run Swap Check", use_container_width=True):
         for m in r['msgs']: st.markdown(f"<p style='color:white; margin:0;'>{m}</p>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-# Mini Test Button
 st.markdown('<div class="test-btn-container">', unsafe_allow_html=True)
 st.button("🎲 Test Data", on_click=on_load_random)
 st.markdown('</div>', unsafe_allow_html=True)
