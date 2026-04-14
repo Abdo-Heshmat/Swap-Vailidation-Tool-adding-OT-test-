@@ -13,7 +13,7 @@ if st.session_state.theme == 'dark':
 else:
     bg, box, txt, brd = "#f8f9fa", "#ffffff", "#1f2937", "#d1d5db"
 
-st.set_page_config(layout="wide", page_title="Smart Swap Validator")
+st.set_page_config(layout="wide", page_title="Smart Swap Validator Pro")
 
 # --- 2. DATA & HELPERS ---
 days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
@@ -55,7 +55,8 @@ st.markdown(f"""
     .emp-header {{ text-align: center; font-weight: 800; font-size: 22px; margin-bottom: 15px; color: {txt}; }}
     .unified-box {{ height: 42px; display: flex; align-items: center; justify-content: center; font-weight: bold; background-color: {box}; border-radius: 8px; }}
     .test-btn-container {{ position: fixed; bottom: 20px; left: 20px; z-index: 1000; }}
-    .results-card {{ padding: 20px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.1); }}
+    .results-card {{ padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }}
+    .status-line {{ padding: 8px; margin: 5px 0; border-radius: 8px; background: rgba(0,0,0,0.1); display: flex; justify-content: space-between; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -85,13 +86,9 @@ for i, col in enumerate([c1, c2], 1):
                     e_t = (datetime.strptime(s_t, "%I %p") + timedelta(hours=dur)).strftime("%I %p")
                     st.markdown(f"<div class='unified-box'>{e_t}</div>", unsafe_allow_html=True)
                 
-                # MUTUAL EXCLUSION TOGGLES
                 o1 = st.selectbox(f"O1{i}{wk}", ["1st Day Off"] + days, key=f"o1{i}{wk}", label_visibility="collapsed")
-                # Disable Toggle 1 if Toggle 2 is ON
                 st.toggle("Work 6th Day OT", key=f"do_ot1_{i}_{wk}", disabled=st.session_state.get(f"do_ot2_{i}_{wk}", False))
-                
                 o2 = st.selectbox(f"O2{i}{wk}", ["2nd Day Off"] + [d for d in days if d != o1], key=f"o2{i}{wk}", label_visibility="collapsed")
-                # Disable Toggle 2 if Toggle 1 is ON
                 st.toggle("Work 7th Day OT", key=f"do_ot2_{i}_{wk}", disabled=st.session_state.get(f"do_ot1_{i}_{wk}", False))
                 
                 with st.expander("➕ Daily OT (Max 2h)"):
@@ -113,24 +110,45 @@ if st.button("🚀 Run Swap Check", use_container_width=True):
     
     for en, cfg in configs.items():
         name = st.session_state[f"un{en}"] or f"Employee {en}"
+        # Exemption Logic
         is_exempt = (7 in shift_data[cfg['c']]["off"]) or (1 in shift_data[cfg['n']]["off"])
         
-        if is_exempt:
-            msg = ["✅ **Rest Rule:** Waived (Day Off on Weekend)."]
-        else:
-            dt_e = get_dt(7, shift_data[cfg['c']]["e"], True, shift_data[cfg['c']]["s"]) + timedelta(hours=st.session_state.get(f"ota_{cfg['idx']}_Current", 0))
-            dt_s = get_dt(8, shift_data[cfg['n']]["s"]) - timedelta(hours=st.session_state.get(f"otb_{cfg['idx']}_Next", 0))
-            gap = (dt_s - dt_e).total_seconds() / 3600
-            msg = [f"{'✅' if gap >= 12 else '❌'} **Rest Rule:** {gap:.1f}h gap (Min 12h)."]
+        # Calculation for Detailed Report
+        dt_e = get_dt(7, shift_data[cfg['c']]["e"], True, shift_data[cfg['c']]["s"]) + timedelta(hours=st.session_state.get(f"ota_{cfg['idx']}_Current", 0))
+        dt_s = get_dt(8, shift_data[cfg['n']]["s"]) - timedelta(hours=st.session_state.get(f"otb_{cfg['idx']}_Next", 0))
+        gap = (dt_s - dt_e).total_seconds() / 3600
         
-        results.append({"name": name, "msgs": msg})
+        # Streak Calculation
+        last_off = shift_data[cfg['c']]["off"][-1] if shift_data[cfg['c']]["off"] else 0
+        first_off = shift_data[cfg['n']]["off"][0] if shift_data[cfg['n']]["off"] else 8
+        streak = (7 - last_off) + (first_off - 1)
 
-    success = all("❌" not in "".join(r["msgs"]) for r in results)
-    st.markdown(f"<div class='results-card' style='background-color:{'#1b5e20' if success else '#b71c1c'}; color:white;'>", unsafe_allow_html=True)
-    st.markdown(f"<h2 style='text-align:center; color:white;'>{'✅ Approved' if success else '❌ Rejected'}</h2>", unsafe_allow_html=True)
+        report = {
+            "name": name,
+            "rest": {"val": gap, "pass": gap >= 12 or is_exempt, "exempt": is_exempt},
+            "streak": {"val": streak, "pass": streak <= 6}
+        }
+        results.append(report)
+
+    # UI Rendering
+    all_pass = all(r["rest"]["pass"] and r["streak"]["pass"] for r in results)
+    status_color = '#1b5e20' if all_pass else '#b71c1c'
+    
+    st.markdown(f"<div class='results-card' style='background-color:{status_color}; color:white;'>", unsafe_allow_html=True)
+    st.markdown(f"<h2 style='text-align:center; color:white;'>{'✅ Swap Approved' if all_pass else '❌ Swap Rejected'}</h2>", unsafe_allow_html=True)
+    
     for r in results:
-        st.markdown(f"<b>{r['name']}</b>", unsafe_allow_html=True)
-        for m in r['msgs']: st.markdown(f"<p style='margin:0;'>{m}</p>", unsafe_allow_html=True)
+        st.markdown(f"### 👤 {r['name']}")
+        
+        # Rest Rule Row
+        rest_icon = "🟢" if r['rest']['pass'] else "🔴"
+        rest_txt = f"{r['rest']['val']:.1f}h Gap" if not r['rest']['exempt'] else "Exempted (Off Sat/Sun)"
+        st.markdown(f"""<div class='status-line'><span>{rest_icon} <b>Rest Rule</b> (Min 12h)</span> <span>{rest_txt}</span></div>""", unsafe_allow_html=True)
+        
+        # Streak Rule Row
+        streak_icon = "🟢" if r['streak']['pass'] else "🔴"
+        st.markdown(f"""<div class='status-line'><span>{streak_icon} <b>Work Streak</b> (Max 6d)</span> <span>{r['streak']['val']} Days</span></div>""", unsafe_allow_html=True)
+        
     st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="test-btn-container">', unsafe_allow_html=True)
